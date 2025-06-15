@@ -21,19 +21,19 @@ app.get('/', (req, res) => {
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
 });
 
 // Mongoose Schemas
 const userSchema = new mongoose.Schema({
-  username: String
+  username: String,
 });
 
 const exerciseSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   description: String,
   duration: Number,
-  date: String
+  date: Date, // Save date as Date object (important!)
 });
 
 const User = mongoose.model('User', userSchema);
@@ -56,15 +56,15 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users/:_id/exercises', async (req, res) => {
   const { description, duration, date } = req.body;
   const user = await User.findById(req.params._id);
-
   if (!user) return res.send('Unknown user ID');
 
   const exerciseDate = date ? new Date(date) : new Date();
+
   const newExercise = new Exercise({
     userId: user._id,
     description,
     duration: parseInt(duration),
-    date: exerciseDate.toDateString()
+    date: exerciseDate,
   });
 
   const savedExercise = await newExercise.save();
@@ -72,9 +72,9 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
   res.json({
     _id: user._id,
     username: user.username,
-    date: savedExercise.date,
+    date: savedExercise.date.toDateString(),
     duration: savedExercise.duration,
-    description: savedExercise.description
+    description: savedExercise.description,
   });
 });
 
@@ -85,23 +85,30 @@ app.get('/api/users/:_id/logs', async (req, res) => {
   if (!user) return res.send('Unknown user ID');
 
   let query = { userId: user._id };
-  let dateFilter = {};
 
-  if (from) dateFilter.$gte = new Date(from);
-  if (to) dateFilter.$lte = new Date(to);
-  if (from || to) query.date = dateFilter;
+  if (from || to) {
+    query.date = {};
+    if (from) query.date.$gte = new Date(from);
+    if (to) query.date.$lte = new Date(to);
+  }
 
-  let exercises = await Exercise.find(query).limit(parseInt(limit) || 500);
+  let exercisesQuery = Exercise.find(query);
+
+  if (limit) {
+    exercisesQuery = exercisesQuery.limit(parseInt(limit));
+  }
+
+  const exercises = await exercisesQuery.exec();
 
   res.json({
     _id: user._id,
     username: user.username,
     count: exercises.length,
-    log: exercises.map(e => ({
+    log: exercises.map((e) => ({
       description: e.description,
       duration: e.duration,
-      date: e.date
-    }))
+      date: e.date.toDateString(),
+    })),
   });
 });
 
